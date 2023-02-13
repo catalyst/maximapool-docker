@@ -26,7 +26,8 @@ RUN apt-get update \
       gettext-base \
       ca-certificates \
       curl \
-      gpg
+      gpg \
+      php
 
 # Fetch some GPG keys we need to verify downloads
 RUN set -ex \
@@ -77,9 +78,12 @@ RUN cd ~ \
 RUN groupadd -r ${RUN_GROUP} && useradd -g ${RUN_GROUP} -d ${CATALINA_HOME} -s /bin/bash ${RUN_USER}
 
 # Add pool source code and configuration assets
-COPY assets/init-maxima-pool.sh assets/docker-healthcheck.sh assets/stack_util_maximapool assets/optimize.mac assets/servlet.conf.template assets/process.conf.template assets/maximalocal.mac.template ${MAXIMAPOOL}/
+COPY assets/init-maxima-pool.sh assets/docker-healthcheck.sh assets/stack_util_maximapool assets/optimize.mac assets/servlet.conf.template assets/process.conf.template assets/maximalocal.mac.template assets/generate_maximalocal_template.php assets/moodle-qtype_stack/stack/cas/casstring.units.class.php ${MAXIMAPOOL}/
 # Add STACK maxima.
 COPY assets/${MAXIMA_LOCAL_PATH} ${STACK_MAXIMA}
+
+RUN if [ "$BUILD_FOR_MOODLE" = true ]; then sed -i 's/require_once/\/\/ require_once/g' ${MAXIMAPOOL}/casstring.units.class.php \
+    && php ${MAXIMAPOOL}/generate_maximalocal_template.php > ${MAXIMAPOOL}/maximalocal.mac.template; fi
 
 RUN VER=$(grep stackmaximaversion ${STACK_MAXIMA}/stackmaxima.mac | grep -oP "\d+") \
     && echo "${VER}" >> ${MAXIMAPOOL}/stack-version \

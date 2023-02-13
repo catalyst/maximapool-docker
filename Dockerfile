@@ -16,6 +16,18 @@ ENV MAXIMAPOOL=/opt/maximapool \
 ENV MAXIMA_LOCAL_PATH=${BUILD_FOR_MOODLE:+moodle-qtype_stack/stack/maxima}
 ENV MAXIMA_LOCAL_PATH=${MAXIMA_LOCAL_PATH:-assStackQuestion/classes/stack/maxima}
 
+RUN apt-get update \
+    && apt-get install -y \
+      openjdk-$(echo "$JAVA_VERSION" | cut -d '-' -f2 | cut -d '.' -f1)-jdk \
+      ant \
+      wget \
+      gnuplot \
+      sbcl \
+      gettext-base \
+      ca-certificates \
+      curl \
+      gpg
+
 # Fetch some GPG keys we need to verify downloads
 RUN set -ex \
   && for key in \
@@ -40,17 +52,7 @@ done
 # 3. grab gosu for easy step-down from root and tini for signal handling
 #
 # 4. Remove package, which are no longer required
-RUN apt-get update \
-    && apt-get install -y \
-      openjdk-${JAVA_VERSION%%[!0-9]*}-jdk \
-      ant \
-      wget \
-      gnuplot \
-      sbcl \
-      gettext-base \
-      ca-certificates \
-      curl \
-    && cd ~ \
+RUN cd ~ \
     && wget http://downloads.sourceforge.net/project/maxima/Maxima-Linux/5.41.0-Linux/maxima-common_5.41.0-6_all.deb \
     && wget http://downloads.sourceforge.net/project/maxima/Maxima-Linux/5.41.0-Linux/maxima-sbcl_5.41.0-6_amd64.deb \
     && echo "4b7615699050abd93b65210814e59eef783466f789157422979c7c242aa4661f  maxima-common_5.41.0-6_all.deb" | sha256sum -c \
@@ -58,7 +60,6 @@ RUN apt-get update \
     && dpkg -i ./maxima-sbcl_5.41.0-6_amd64.deb ./maxima-common_5.41.0-6_all.deb \
     && rm maxima-common_5.41.0-6_all.deb maxima-sbcl_5.41.0-6_amd64.deb \
     && cd ${CATALINA_HOME}/webapps \
-    && rm -r docs/ examples/ host-manager/ manager/ \
     && curl -o /usr/local/bin/gosu -fSL "https://github.com/tianon/gosu/releases/download/1.11/gosu-$(dpkg --print-architecture)" \
     && curl -o /usr/local/bin/gosu.asc -fSL "https://github.com/tianon/gosu/releases/download/1.11/gosu-$(dpkg --print-architecture).asc" \
     && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
@@ -106,4 +107,3 @@ RUN VER=$(grep stackmaximaversion ${STACK_MAXIMA}/stackmaxima.mac | grep -oP "\d
 HEALTHCHECK --interval=10s --timeout=9s --start-period=15s CMD ${MAXIMAPOOL}/docker-healthcheck.sh
 ENTRYPOINT ["tini", "--", "/init-maxima-pool.sh"]
 CMD ["catalina.sh", "run"]
-

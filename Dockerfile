@@ -2,8 +2,8 @@ FROM tomcat:9-jre11
 LABEL maintainer="O: University of Halle (Saale) Germany; OU: ITZ, department application systems" \
       license="Docker composition: MIT; Components: Please check"
 
-ARG BUILD_NO
-ARG BUILD_FOR_MOODLE=true
+ARG QTYPE_STACK_COMMIT=master
+ARG QTYPE_STACK_REMOTE="https://github.com/maths/moodle-qtype_stack.git"
 
 ENV MAXIMAPOOL=/opt/maximapool \
     TOMCAT=${CATALINA_HOME} \
@@ -11,10 +11,19 @@ ENV MAXIMAPOOL=/opt/maximapool \
     RUN_USER=tomcat \
     RUN_GROUP=tomcat
 
-# If BUILD_FOR_MOODLE buid-time argument provided, use STACK maxima from moodle-qtype_stack repo
-# otherwise, use STACK maxima from StackQuestion.
-ENV MAXIMA_LOCAL_PATH=${BUILD_FOR_MOODLE:+moodle-qtype_stack/stack/maxima}
-ENV MAXIMA_LOCAL_PATH=${MAXIMA_LOCAL_PATH:-assStackQuestion/classes/stack/maxima}
+RUN apt-get update \
+    && apt-get install -y \
+      openjdk-$(echo "$JAVA_VERSION" | cut -d '-' -f2 | cut -d '.' -f1)-jdk \
+      ant \
+      wget \
+      gnuplot \
+      sbcl \
+      gettext-base \
+      ca-certificates \
+      curl \
+      gpg \
+      php \
+      git
 
 # Fetch some GPG keys we need to verify downloads
 RUN set -ex \
@@ -40,17 +49,7 @@ done
 # 3. grab gosu for easy step-down from root and tini for signal handling
 #
 # 4. Remove package, which are no longer required
-RUN apt-get update \
-    && apt-get install -y \
-      openjdk-${JAVA_VERSION%%[!0-9]*}-jdk \
-      ant \
-      wget \
-      gnuplot \
-      sbcl \
-      gettext-base \
-      ca-certificates \
-      curl \
-    && cd ~ \
+RUN cd ~ \
     && wget http://downloads.sourceforge.net/project/maxima/Maxima-Linux/5.41.0-Linux/maxima-common_5.41.0-6_all.deb \
     && wget http://downloads.sourceforge.net/project/maxima/Maxima-Linux/5.41.0-Linux/maxima-sbcl_5.41.0-6_amd64.deb \
     && echo "4b7615699050abd93b65210814e59eef783466f789157422979c7c242aa4661f  maxima-common_5.41.0-6_all.deb" | sha256sum -c \
@@ -58,7 +57,6 @@ RUN apt-get update \
     && dpkg -i ./maxima-sbcl_5.41.0-6_amd64.deb ./maxima-common_5.41.0-6_all.deb \
     && rm maxima-common_5.41.0-6_all.deb maxima-sbcl_5.41.0-6_amd64.deb \
     && cd ${CATALINA_HOME}/webapps \
-    && rm -r docs/ examples/ host-manager/ manager/ \
     && curl -o /usr/local/bin/gosu -fSL "https://github.com/tianon/gosu/releases/download/1.11/gosu-$(dpkg --print-architecture)" \
     && curl -o /usr/local/bin/gosu.asc -fSL "https://github.com/tianon/gosu/releases/download/1.11/gosu-$(dpkg --print-architecture).asc" \
     && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
@@ -69,16 +67,23 @@ RUN apt-get update \
     && gpg --batch --verify /usr/local/bin/tini.asc /usr/local/bin/tini \
     && rm /usr/local/bin/tini.asc \
     && chmod +x /usr/local/bin/tini \
-    && apt-get purge -y --auto-remove wget \
     && rm -r /var/lib/apt/lists/*
 
 # Add a tomcat user
 RUN groupadd -r ${RUN_GROUP} && useradd -g ${RUN_GROUP} -d ${CATALINA_HOME} -s /bin/bash ${RUN_USER}
 
 # Add pool source code and configuration assets
-COPY assets/init-maxima-pool.sh assets/docker-healthcheck.sh assets/stack_util_maximapool assets/optimize.mac assets/servlet.conf.template assets/process.conf.template assets/maximalocal.mac.template ${MAXIMAPOOL}/
+COPY assets/init-maxima-pool.sh assets/docker-healthcheck.sh assets/stack_util_maximapool assets/optimize.mac assets/servlet.conf.template assets/process.conf.template assets/generate_maximalocal_template.php ${MAXIMAPOOL}/
+
 # Add STACK maxima.
-COPY assets/${MAXIMA_LOCAL_PATH} ${STACK_MAXIMA}
+RUN git clone ${QTYPE_STACK_REMOTE} qtype_stack && cd qtype_stack && git checkout ${QTYPE_STACK_COMMIT} && cd - \
+    && cp -r  qtype_stack/stack/maxima ${STACK_MAXIMA} \
+    && cp qtype_stack/stack/cas/casstring.units.class.php ${MAXIMAPOOL} \
+    && sed -i 's/require_once/\/\/ require_once/g' ${MAXIMAPOOL}/casstring.units.class.php \
+    && php ${MAXIMAPOOL}/generate_maximalocal_template.php > ${MAXIMAPOOL}/maximalocal.mac.template
+
+# Remove unneeded packages.
+RUN apt-get purge -y --auto-remove wget git php && rm -rf qtype_stack
 
 RUN VER=$(grep stackmaximaversion ${STACK_MAXIMA}/stackmaxima.mac | grep -oP "\d+") \
     && echo "${VER}" >> ${MAXIMAPOOL}/stack-version \
@@ -106,4 +111,3 @@ RUN VER=$(grep stackmaximaversion ${STACK_MAXIMA}/stackmaxima.mac | grep -oP "\d
 HEALTHCHECK --interval=10s --timeout=9s --start-period=15s CMD ${MAXIMAPOOL}/docker-healthcheck.sh
 ENTRYPOINT ["tini", "--", "/init-maxima-pool.sh"]
 CMD ["catalina.sh", "run"]
-

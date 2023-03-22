@@ -1,9 +1,3 @@
 [submodule "stack_util_maximapool"]
 	path = assets/stack_util_maximapool
 	url = https://github.com/maths/stack_util_maximapool.git
-[submodule "assStackQuestion"]
-	path = assets/assStackQuestion
-	url = https://github.com/ilifau/assStackQuestion.git
-[submodule "assets/moodle-qtype_stack"]
-	path = assets/moodle-qtype_stack
-	url = https://github.com/maths/moodle-qtype_stack.git
